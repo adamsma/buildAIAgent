@@ -6,6 +6,8 @@ from google import genai
 from google.genai import types
 from prompts import *
 
+from functions.get_files_info import schema_get_files_info
+
 def main():
 
     parser = argparse.ArgumentParser(description="Chatbot")
@@ -18,15 +20,24 @@ def main():
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
+
+    available_functions = types.Tool(
+        function_declarations=[schema_get_files_info],
+    )
+    
     messages = [
         types.Content(role="user", parts=[types.Part(text = args.prompt)]),
     ]
 
     client = genai.Client(api_key=api_key)
+    config=types.GenerateContentConfig(
+        tools=[available_functions], system_instruction=system_prompt
+    )
+
     response = client.models.generate_content(
         model = 'gemini-2.5-flash', 
         contents = messages,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
+        config= config,
     )
 
     if not response.usage_metadata:
@@ -34,8 +45,13 @@ def main():
     
     prompt_tokens = response.usage_metadata.prompt_token_count
     response_tokens = response.usage_metadata.candidates_token_count
+    fxCalls = response.function_calls
 
-    print(response.text)
+    if(fxCalls is not None):
+        for fx in fxCalls:
+            print(f"Calling function: {fx.name}({fx.args})")
+    else:
+        print(response.text)
 
     if("--verbose" in sys.argv):
         print(f"User prompt: {args.prompt}")
