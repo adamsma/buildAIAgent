@@ -10,6 +10,7 @@ from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_file_content
 from functions.run_python_file import schema_run_python_file
 from functions.write_file import schema_write_file
+from functions.call_function import call_function
 
 def main():
 
@@ -56,8 +57,24 @@ def main():
     fxCalls = response.function_calls
 
     if(fxCalls is not None):
+
+        results = []
+
         for fx in fxCalls:
-            print(f"Calling function: {fx.name}({fx.args})")
+            # print(f"Calling function: {fx.name}({fx.args})")
+            fxResult = call_function(fx, "--verbose" in sys.argv)
+
+            if (fxResult.parts is None or 
+                fxResult.parts[0].function_response is None or 
+                fxResult.parts[0].function_response.response is None
+            ):
+                raise RuntimeError("Error getting function result")
+            
+            if "--verbose" in sys.argv:
+                print(f"-> {fxResult.parts[0].function_response.response}")
+            
+            results += fxResult.parts[0].function_response.response["result"]
+
     else:
         print(response.text)
 
