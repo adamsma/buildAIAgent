@@ -40,48 +40,70 @@ def main():
 
     client = genai.Client(api_key=api_key)
     config=types.GenerateContentConfig(
-        tools=[available_functions], system_instruction=system_prompt
+            tools=[available_functions], system_instruction=system_prompt
     )
 
-    response = client.models.generate_content(
-        model = 'gemini-2.5-flash', 
-        contents = messages,
-        config= config,
-    )
+    for i in range(0,20):
 
-    if not response.usage_metadata:
-        raise RuntimeError("Gemini API response appears to be malformed")
-    
-    prompt_tokens = response.usage_metadata.prompt_token_count
-    response_tokens = response.usage_metadata.candidates_token_count
-    fxCalls = response.function_calls
+        try: 
+            response = client.models.generate_content(
+                model = 'gemini-2.5-flash', 
+                contents = messages,
+                config= config,
+            )
 
-    if(fxCalls is not None):
-
-        results = []
-
-        for fx in fxCalls:
-            # print(f"Calling function: {fx.name}({fx.args})")
-            fxResult = call_function(fx, "--verbose" in sys.argv)
-
-            if (fxResult.parts is None or 
-                fxResult.parts[0].function_response is None or 
-                fxResult.parts[0].function_response.response is None
-            ):
-                raise RuntimeError("Error getting function result")
+            if not response.usage_metadata:
+                raise RuntimeError("Gemini API response appears to be malformed")
             
-            if "--verbose" in sys.argv:
-                print(f"-> {fxResult.parts[0].function_response.response}")
+            for candidate in response.candidates: # type: ignore
+                messages.append(candidate.content) # type: ignore
             
-            results += fxResult.parts[0].function_response.response["result"]
+            prompt_tokens = response.usage_metadata.prompt_token_count
+            response_tokens = response.usage_metadata.candidates_token_count
+            fxCalls = response.function_calls
 
-    else:
-        print(response.text)
+            if(fxCalls is not None):
 
-    if("--verbose" in sys.argv):
-        print(f"User prompt: {args.prompt}")
-        print(f"Prompt tokens: {prompt_tokens}")
-        print(f"Response tokens: {response_tokens}")
+                results = []
+
+                for fx in fxCalls:
+                    # print(f"Calling function: {fx.name}({fx.args})")
+                    fxResult = call_function(fx, "--verbose" in sys.argv)
+
+                    if (fxResult.parts is None or 
+                        fxResult.parts[0].function_response is None or 
+                        fxResult.parts[0].function_response.response is None
+                    ):
+                        raise RuntimeError("Error getting function result")
+                    
+                    if "--verbose" in sys.argv:
+                        print(f"-> {fxResult.parts[0].function_response.response}")
+                    
+                    results += fxResult.parts[0].function_response.response["result"]
+
+                    fxContent = types.Content(
+                        role="user", 
+                        parts=[types.Part(text = "\n".join(results))]
+                    )
+
+                    messages.append(fxContent)
+
+            else:
+                if response.text is not None:
+                    print("Final Response:")
+                    print(response.text)
+                    break
+
+            if("--verbose" in sys.argv):
+                print(f"User prompt: {args.prompt}")
+                print(f"Prompt tokens: {prompt_tokens}")
+                print(f"Response tokens: {response_tokens}")
+
+        except Exception as e:
+            print(f"Error: executing agent: {e}")
+            continue
+        
+
 
 
 if __name__ == "__main__":
